@@ -54,24 +54,6 @@ jobs:
         id: xcode-version
         run: echo "::set-output name=xcode-version::$(xcodebuild -version|tail -1|cut -f3 -d' ')"
 
-      - name: Install firebase CLI
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          retry_wait_seconds: 60
-          max_attempts: 3
-          command: npm i -g firebase-tools
-
-      - name: Cache Firestore Emulator
-        uses: actions/cache@v2
-        with:
-          path: ~/.cache/firebase/emulators
-          key: firebase-emulators-v1-${{ github.run_id }}
-          restore-keys: firebase-emulators-v1
-
-      - name: Start Firestore Emulator
-        run: yarn tests:emulator:start-ci
-
       - name: Get yarn cache directory path
         id: yarn-cache-dir-path
         run: echo "::set-output name=dir::$(yarn cache dir)"
@@ -83,6 +65,22 @@ jobs:
           path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
           key: ${{ runner.os }}-yarn-v1-${{ hashFiles('**/package.json') }}
           restore-keys: ${{ runner.os }}-yarn-v1
+
+      - name: Lerna Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            node_modules
+            */*/node_modules
+          key: ${{ runner.os }}-lerna-v1-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: ${{ runner.os }}-lerna-v1
+
+      - name: Metro Bundler Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ env.TMPDIR }}/metro-cache
+          key: ${{ runner.os }}-metro-v1-${{ github.run_id }}
+          restore-keys: ${{ runner.os }}-metro-v1
 
       - uses: actions/cache@v2
         name: Cache Pods
@@ -110,7 +108,7 @@ jobs:
       - name: Update Ruby build tools
         uses: nick-invision/retry@v2
         with:
-          timeout_minutes: 10
+          timeout_minutes: 2
           retry_wait_seconds: 60
           max_attempts: 3
           command: gem update cocoapods xcodeproj
@@ -118,10 +116,20 @@ jobs:
       - name: Pod Install
         uses: nick-invision/retry@v2
         with:
-          timeout_minutes: 10
+          timeout_minutes: 2
           retry_wait_seconds: 60
           max_attempts: 3
           command: yarn tests:ios:pod:install
+
+      - name: Cache Firestore Emulator
+        uses: actions/cache@v2
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-v1-${{ github.run_id }}
+          restore-keys: firebase-emulators-v1
+
+      - name: Start Firestore Emulator
+        run: yarn tests:emulator:start-ci
 
       - name: Build iOS App
         run: |
@@ -163,13 +171,6 @@ jobs:
         run: |
           cd tests
           ./node_modules/.bin/nyc ./node_modules/.bin/detox test --debug-synchronization 200 --configuration ios.sim.debug
-
-      - name: Upload Buildcache Log
-        uses: actions/upload-artifact@v2
-        if: always()
-        with:
-          name: buildcache_log
-          path: ./.buildcache/buildcache.log
 
       - name: Compress Simulator Log
         if: always()
