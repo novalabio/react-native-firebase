@@ -167,7 +167,7 @@ jobs:
 
       - name: Pre-fetch Javascript bundle
         run: |
-          echo TMPDIR is {{ env.TMPDIR }}
+          echo TMPDIR is ${{ env.TMPDIR }}
           nohup yarn tests:packager:jet &
           printf 'Waiting for packager to come online'
           until curl --output /dev/null --silent --head --fail http://localhost:8081/status; do
@@ -177,8 +177,8 @@ jobs:
           echo "Packager is online! Preparing bundle..."
           curl --output /dev/null --silent --head --fail "http://localhost:8081/index.bundle?platform=ios&dev=true&minify=false&inlineSourceMap=true"
           echo "...javascript bundle ready"
-          ls -la {{ env.TMPDIR }}/metro-*
-          ls -la {{ env.TMPDIR }}/react-*
+          ls -la ${{ env.TMPDIR }}/metro-*
+          ls -la ${{ env.TMPDIR }}/react-*
 
       - name: Create Simulator Log
         # With a little delay so the detox test below has time to spawn it, missing the first part of boot is fine
