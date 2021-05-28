@@ -167,6 +167,7 @@ jobs:
 
       - name: Pre-fetch Javascript bundle
         run: |
+          env
           echo TMPDIR is ${{ env.TMPDIR }}
           nohup yarn tests:packager:jet &
           printf 'Waiting for packager to come online'
