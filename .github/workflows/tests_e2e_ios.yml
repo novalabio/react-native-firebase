@@ -36,11 +36,17 @@ jobs:
         with:
           fetch-depth: 50
 
-      - uses: mikehardy/buildcache-action@v1
-        name: Buildcache
+      - uses: hendrikmuhs/ccache-action@v1
+        name: Xcode Compile Cache
         with:
-          cache_key: ${{ runner.os }}-v1
-          upload_buildcache_log: true
+          key: ${{ runner.os }}-v2 # makes a unique key w/related restore key internally
+          max-size: 400M
+
+      # - uses: mikehardy/buildcache-action@v1
+      #   name: Buildcache
+      #   with:
+      #     cache_key: ${{ runner.os }}-v1
+      #     upload_buildcache_log: true
 
       - uses: actions/setup-node@v2
         with:
@@ -66,6 +72,8 @@ jobs:
           key: ${{ runner.os }}-yarn-v1-${{ hashFiles('**/package.json') }}
           restore-keys: ${{ runner.os }}-yarn-v1
 
+      # If we cache lerna, the GoogleServices plist we need isn't there
+      # Also this takes almost as much time to cache restore/save as running install
       # - name: Lerna Cache
       #   uses: actions/cache@v2
       #   with:
@@ -78,7 +86,9 @@ jobs:
       - name: Metro Bundler Cache
         uses: actions/cache@v2
         with:
-          path: ${{ env.TMPDIR }}/metro-cache
+          path: |
+            ${{ env.TMPDIR }}/metro*
+            ${{ env.TMPDIR }}/react*
           key: ${{ runner.os }}-metro-v1-${{ github.run_id }}
           restore-keys: ${{ runner.os }}-metro-v1
 
@@ -133,23 +143,31 @@ jobs:
 
       - name: Build iOS App
         run: |
+          export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
+          export CCACHE_SLOPPINESS=clang_index_store,file_stat_matches,include_file_ctime,include_file_mtime,ivfsoverlay,pch_defines,modules,system_headers,time_macros
+          export CCACHE_FILECLONE=true
+          export CCACHE_DEPEND=true
+          export CCACHE_INODECACHE=true
+          ccache -s
           export SKIP_BUNDLING=1
           export RCT_NO_LAUNCH_PACKAGER=1
           cd tests
           set -o pipefail
           ./node_modules/.bin/detox build --configuration ios.sim.debug
+          ccache -s
         shell: bash
 
       - name: Install applesimutils
         uses: nick-invision/retry@v2
         with:
-          timeout_minutes: 10
+          timeout_minutes: 5
           retry_wait_seconds: 60
           max_attempts: 3
           command: HOMEBREW_NO_AUTO_UPDATE=1 brew tap wix/brew && HOMEBREW_NO_AUTO_UPDATE=1 brew install applesimutils && applesimutils --list
 
       - name: Pre-fetch Javascript bundle
         run: |
+          echo TMPDIR is {{ env.TMPDIR }}
           nohup yarn tests:packager:jet &
           printf 'Waiting for packager to come online'
           until curl --output /dev/null --silent --head --fail http://localhost:8081/status; do
@@ -159,6 +177,8 @@ jobs:
           echo "Packager is online! Preparing bundle..."
           curl --output /dev/null --silent --head --fail "http://localhost:8081/index.bundle?platform=ios&dev=true&minify=false&inlineSourceMap=true"
           echo "...javascript bundle ready"
+          ls -la {{ env.TMPDIR }}/metro-*
+          ls -la {{ env.TMPDIR }}/react-*
 
       - name: Create Simulator Log
         # With a little delay so the detox test below has time to spawn it, missing the first part of boot is fine
@@ -167,7 +187,7 @@ jobs:
         run: nohup sh -c "sleep 30 && xcrun simctl spawn booted log stream --level debug --style compact > simulator.log 2>&1 &"
 
       - name: Detox Test
-        timeout-minutes: 40
+        timeout-minutes: 10
         run: |
           cd tests
           ./node_modules/.bin/nyc ./node_modules/.bin/detox test --debug-synchronization 200 --configuration ios.sim.debug
