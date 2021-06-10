@@ -272,10 +272,10 @@ class SyncTree {
     this._reverseLookup[eventRegistrationKey] = registration;
 
     if (once) {
-      SharedEventEmitter.once(
-        eventRegistrationKey,
-        this._onOnceRemoveRegistration(eventRegistrationKey, listener)
-      );
+      const subscription = SharedEventEmitter.addListener(eventRegistrationKey, event => {
+        this._onOnceRemoveRegistration(eventRegistrationKey, listener, event);
+        subscription.remove();
+      });
     } else {
       SharedEventEmitter.addListener(eventRegistrationKey, listener);
     }
